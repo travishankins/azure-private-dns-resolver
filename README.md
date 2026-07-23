@@ -13,16 +13,56 @@ on-prem point at it.
 
 ```mermaid
 flowchart LR
-    OnPrem[On-prem AD DNS] -- conditional fwd: privatelink zones --> IN[Inbound Endpoint VIP]
-    IN --> PDNS[Private DNS zones privatelink.*]
-    PDNS --> PE[Private Endpoint IPs]
-    Spoke[Spoke VMs] -- DNS = inbound VIP --> IN
-    Spoke -- corp.contoso.com --> RS[Forwarding Ruleset]
-    RS --> OUT[Outbound Endpoint] --> OnPrem
+    subgraph OnPremE["On-premises"]
+        Client[On-prem client / server]
+        ADDNS["AD DNS servers<br/>(corp.contoso.com)"]
+        Client -->|query| ADDNS
+    end
+
+    subgraph AzureE["Azure"]
+        subgraph Hub["Hub VNet"]
+            IN["DNS Private Resolver<br/>Inbound Endpoint VIP"]
+            OUT["DNS Private Resolver<br/>Outbound Endpoint"]
+            RS["DNS Forwarding Ruleset"]
+            PDNS["Private DNS zones<br/>privatelink.*"]
+            OUT --- RS
+        end
+        subgraph Spoke["Spoke VNet(s)"]
+            SpokeVM[Spoke VMs / workloads]
+            PE["Private Endpoint NIC<br/>(private IP)"]
+        end
+        PDNS -->|A record| PE
+    end
+
+    %% Connectivity
+    OnPremE <-->|VPN / ExpressRoute| AzureE
+
+    %% On-prem -> Azure private name resolution (inbound)
+    ADDNS -->|"conditional fwd:<br/>blob.core.windows.net, etc."| IN
+    IN -->|resolves| PDNS
+
+    %% Spoke -> Azure private name resolution
+    SpokeVM -->|"DNS = inbound VIP"| IN
+    SpokeVM -.->|data traffic| PE
+
+    %% Azure -> on-prem name resolution (outbound)
+    SpokeVM -->|"corp.contoso.com"| RS
+    RS --> OUT
+    OUT -->|"forward to on-prem DNS IPs"| ADDNS
 ```
 
-- **Inbound endpoint** = on-prem -> Azure (resolves your `privatelink.*` zones).
-- **Outbound endpoint + ruleset** = Azure -> on-prem AD (resolves `corp.contoso.com`).
+**Two resolution directions:**
+
+- **Inbound (on-prem -> Azure):** On-prem clients query their AD DNS, which
+  conditionally forwards Azure PaaS public names to the **inbound endpoint VIP**;
+  Azure resolves the CNAME chain against the linked `privatelink.*` zones and
+  returns the **Private Endpoint** IP.
+- **Outbound (Azure -> on-prem):** Spoke workloads point at the inbound VIP; for
+  on-prem domains (`corp.contoso.com`) the **forwarding ruleset** sends the query
+  out the **outbound endpoint** to the on-prem AD DNS servers.
+- **Connectivity vs. resolution:** VPN/ExpressRoute carries both the DNS traffic
+  and the actual data-plane traffic to the Private Endpoint. Name resolution via
+  ruleset/zone links works independently of VNet peering.
 
 ## Placeholders to fill in
 
