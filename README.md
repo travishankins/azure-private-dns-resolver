@@ -12,15 +12,19 @@ on-prem point at it.
 ## Architecture (the flow)
 
 ```mermaid
-flowchart LR
+%%{init: {"flowchart": {"nodeSpacing": 60, "rankSpacing": 70}, "themeVariables": {"fontSize": "20px"}}}%%
+flowchart TB
     subgraph OnPremE["On-premises"]
+        direction TB
         Client[On-prem client / server]
         ADDNS["AD DNS servers<br/>(corp.contoso.com)"]
         Client -->|query| ADDNS
     end
 
     subgraph AzureE["Azure"]
+        direction TB
         subgraph Hub["Hub VNet"]
+            direction TB
             IN["DNS Private Resolver<br/>Inbound Endpoint VIP"]
             OUT["DNS Private Resolver<br/>Outbound Endpoint"]
             RS["DNS Forwarding Ruleset"]
@@ -28,6 +32,7 @@ flowchart LR
             OUT --- RS
         end
         subgraph Spoke["Spoke VNet(s)"]
+            direction TB
             SpokeVM[Spoke VMs / workloads]
             PE["Private Endpoint NIC<br/>(private IP)"]
         end
